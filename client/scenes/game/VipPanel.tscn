@@ -1,0 +1,113 @@
+[gd_scene load_steps=2 format=3 uid="uid://cvippanel0001"]
+
+; VipPanel -- the player's VIP tier, progress toward the next one, the
+; privileges it grants, and the once-a-day privilege grant claim.
+;
+; A SECTION, not a tab. The live MainHub nav grid holds 23 TabBar buttons and
+; _layout_hub() sizes the grid from buttons.size(), so a 24th button would start
+; a 7th row at 4 columns and steal body height on a phone. This panel mounts
+; inside the SHOP view -- the screen a player is already on when they ask what a
+; paid tier buys, since the ladder's benefits are discounts, bag slots,
+; cosmetics and extra daily attempts. See VIP_PANEL_MOUNT.patch.md.
+;
+; Two mounting paths, both supported, because MainHub mounts sibling panels
+; from their SCRIPT while a headless proof may mount this scene:
+;   * instantiated from this .tscn -> the nodes below resolve by name;
+;   * built with VipPanel.gd.new()  -> the @onready lookups find nothing.
+; The node names here are therefore the contract. Renaming one silently drops
+; that field back to its last rendered value.
+;
+; Server contract, MEASURED by booting the app and driving the routes (the live
+; route table holds 355 paths; exactly these two match "vip"):
+;   GET  /vip/{player_id}/status      server/vip.py:702, mounted main.py:739
+;        -> 200 {ok, vip:{15 keys}}; 403 when the session is another player.
+;   POST /vip/{player_id}/claim-daily  server/vip.py:709
+;        -> 200 {ok, already_claimed, empty_grant, reason, reward, tier_id,
+;                 utc_day}. NO body, NO query params.
+;
+; THE TRAP THE COPY BELOW MUST NOT INVERT: a fresh player's claim answers
+; HTTP 200 with `empty_grant: true` and `reward.spirit_stones: 0`, and answers
+; the IDENTICAL body on a second press. A panel that branches on the status code
+; tells a player who received nothing that they succeeded, twice. VipPanel.gd
+; reads `already_claimed` and `empty_grant` from the body for that reason.
+;
+; The 4 ladder rows and the 5 benefit rows are built in code from the server's
+; own `tiers` array and `benefits` dict rather than authored here, so a fifth
+; tier is a server edit and needs no change to this scene.
+
+[ext_resource type="Script" path="res://scenes/game/VipPanel.gd" id="1_script"]
+
+[node name="VipPanel" type="PanelContainer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+; The script MUST be attached to the root. Without this line the scene
+; instantiates as a bare PanelContainer, every named lookup misses, and the
+; panel mounts with a visible empty frame and no error at all.
+script = ExtResource("1_script")
+
+[node name="VipRoot" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="Label" parent="VipRoot"]
+layout_mode = 2
+text = "VIP"
+theme_override_font_sizes/font_size = 22
+
+[node name="Status" type="Label" parent="VipRoot"]
+layout_mode = 2
+text = "Reading your VIP standing..."
+autowrap_mode = 2
+
+[node name="RefreshButton" type="Button" parent="VipRoot"]
+layout_mode = 2
+text = "Refresh VIP Standing"
+
+[node name="TierBlock" type="VBoxContainer" parent="VipRoot"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TierLabel" type="Label" parent="VipRoot/TierBlock"]
+layout_mode = 2
+text = "Tier: ..."
+
+[node name="PointsLabel" type="Label" parent="VipRoot/TierBlock"]
+layout_mode = 2
+text = "Lifetime VIP points: 0"
+
+[node name="ProgressBar" type="ProgressBar" parent="VipRoot/TierBlock"]
+layout_mode = 2
+min_value = 0.0
+max_value = 100.0
+value = 0.0
+show_percentage = false
+
+[node name="NextLabel" type="Label" parent="VipRoot/TierBlock"]
+layout_mode = 2
+text = ""
+autowrap_mode = 2
+
+[node name="ClaimBlock" type="VBoxContainer" parent="VipRoot"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ClaimButton" type="Button" parent="VipRoot/ClaimBlock"]
+layout_mode = 2
+text = "Collect Daily Grant"
+
+[node name="ClaimInfo" type="Label" parent="VipRoot/ClaimBlock"]
+layout_mode = 2
+text = ""
+autowrap_mode = 2
+
+[node name="BenefitsBox" type="VBoxContainer" parent="VipRoot"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TierListBox" type="VBoxContainer" parent="VipRoot"]
+layout_mode = 2
+theme_override_constants/separation = 4

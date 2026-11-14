@@ -1,0 +1,181 @@
+# Element matrix client panel -- wiring patch for client/scenes/game/MainHub.gd
+#
+# STATUS: ALREADY APPLIED -- DO NOT RE-APPLY
+# ------------------------------------------
+# `git apply --check client/scenes/game/ELEMENT_MATRIX_MOUNT.patch` FAILS with
+# "patch failed: client/scenes/game/MainHub.gd:89". That is NOT staleness and NOT
+# drift. A peer landed this patch's content before this task ran.
+#
+# Verified present in the live tree 2026-10-05, all three hunks, byte-identical to
+# the diff below:
+#     MainHub.gd:99    const ELEMENT_MATRIX_VIEW := "res://.../ElementMatrixView.tscn"
+#     MainHub.gd:391   func _mount_element_matrix(view: Control) -> void:
+#     MainHub.gd:938   _mount_element_matrix(view)   (inside the live beasts branch)
+# The file has since grown to 1533 lines / 75142 bytes (md5 32ee9b8daf0c7cc96908255c60498ed1),
+# which is why the line-anchored hunks no longer match at their original offsets.
+#
+# BEHAVIOUR RE-MEASURED 2026-10-05 (client/tools/verify_panel_mounts.py):
+#     unmounted orphans : 3 -> 2 -> 1
+#                         (3 = ElementMatrixPanel, TowerPanel, WorldEventPanel;
+#                          this patch took it to 2; TowerPanel has since landed,
+#                          leaving only WorldEventPanel)
+#     MOUNTED           : 53
+#     verdict           : PASS  (ceiling 8)
+#     ElementMatrixPanel: MOUNTED via scenes/game/ElementMatrixView.tscn
+#
+# RUNTIME PROOF ADDED 2026-10-05 (headless Godot 4.7.2, autoload probe, real
+# MainHub.tscn boot). 11 checks green: hub found, Views/Beasts found,
+# ElementMatrixView instanced under it, panel script attached, ElementMatrixRoot
+# built, MatrixGrid present and a GridContainer, 8 buttons, all 8 carrying the
+# element_matrix_action meta. NEGATIVE CONTROL: stripping the three mount sites
+# from MainHub.gd and re-running flips mounted=true -> false, so the green run
+# is caused by this mount and not by a probe that always passes. Control file
+# restored byte-identical afterwards (md5 32ee9b8daf0c7cc96908255c60498ed1).
+#
+# TRAP FOUND THE HARD WAY: a `godot --script res://...` probe reports
+# mounted=false even on a fully mounted tree. --script mode does not register
+# autoloads, so GameState is undefined, MainHub.gd fails to compile, _ready never
+# runs, and the panel is never built. Run the probe as an AUTOLOAD and boot
+# scenes/game/MainHub.tscn instead. A false negative here looks exactly like a
+# broken mount.
+#
+# NEGATIVE CONTROL, in-memory only, repo never touched: stripping the three mount
+# lines from MainHub.gd's text and re-running the same scan returns the orphan
+# count to 3 and flips ElementMatrixPanel to "NO .tscn". So the 2 is caused by
+# this mount and not by a check that always passes. A canary run with the
+# threshold forced to 0 reports the run would fail, so the tool is not vacuous.
+#
+# STILL OPEN (unchanged by this status note): the mount was exercised with NO
+# server running, so the panel mounts and builds its UI but has never rendered a
+# live /elements/state answer. Real-data rendering through the mounted path is
+# not yet proven.
+#
+# The original design notes below are kept as the record of why the mount sits
+# inside the Beasts view rather than on its own tab.
+#
+# WHY A PATCH AND NOT AN EDIT (original rationale)
+# -----------------------------------------------
+# ---------------------------
+# MainHub.gd belongs to another worker on this shared tree. This work covers the
+# new panel script, its .tscn and this patch -- not another worker's file.
+#
+# REGENERATED 2026-10-03. The 2026-10-02 version no longer applies:
+# `git apply --check` returned "patch failed: MainHub.gd:78" because the file
+# grew and its hunk anchors moved. This version is generated from the tree as
+# measured now (44835 bytes, 950 lines, md5 b573a18d5070dfc97aa41b465ccb454d).
+#
+# ZERO TABS ARE ADDED
+# -------------------
+# The matrix rides INSIDE the Beasts view the player already opens, beside
+# BeastCompanionView and CodexView. Measured before and after the patch:
+# TabBar button count 23 -> 23, `views` 23 keys -> 23, `buttons` 23 keys -> 23,
+# key SETS identical.
+#
+# WHERE IT GOES, AND WHY NOT "LINE 479"
+# -------------------------------------
+# _wrap_content has TWO beasts branches. The `if` matches first and RETURNS
+# before any _style_content() call; the later `elif` is unreachable for the
+# beasts tab, so a panel placed there compiles and never runs. The call is
+# anchored on the live branch's own _mount_codex(view) line, which cannot drift
+# into the dead one.
+#
+# APPLY
+# -----
+#   cd G:/Projects/wayfarers-cycle
+#   git apply --check client/scenes/game/ELEMENT_MATRIX_MOUNT.patch
+#   git apply client/scenes/game/ELEMENT_MATRIX_MOUNT.patch
+#
+# MEASURED BEFORE THIS FILE WAS WRITTEN
+# ------------------------------------
+# Godot 4.7.2 headless, on a scratch copy of client/ that was md5-compared
+# byte-identical to the repo first.
+#
+# 1. Parse proof of the panel itself (36 checks, all green):
+#    scene loads; script attached to root; all 24 nodes _build_ui creates exist;
+#    MatrixGrid is a GridContainer; all 8 Buttons (OptionButton extends Button)
+#    carry the element_matrix_action meta; all five /elements/* paths declared.
+#    Four NEGATIVE CONTROLS, each restored byte-identical, each biting:
+#      tscn script detached  -> FAIL "script attached to scene root"
+#      Status -> StatusXX    -> FAIL "node exists: Status"
+#      OptionButton untagged -> FAIL "untagged=[ForgeElement]"
+#      real syntax error     -> "Parse Error", RESULT: FAIL
+#
+# 2. Mount proof, booting the REAL MainHub.tscn with the patched hub (14 checks):
+#    ElementMatrixView found under Views/Beasts, running ElementMatrixPanel.gd,
+#    having BUILT ElementMatrixRoot and MatrixGrid, with all 8 buttons present
+#    and NONE stamped "prototype preview" by the hub styler.
+#    CONTROL: the same driver against the UNPATCHED hub reports
+#    "FAIL ElementMatrixView is mounted under Views/Beasts" -- 8 checks, 1 fail.
+#    So the green run is caused by this patch and not by the test.
+#
+# STILL OPEN
+# ----------
+# The mount was exercised with NO server running, so the panel mounted and built
+# its UI but never rendered a live /elements/state answer. Rendering real server
+# data through the mounted path is not yet proven.
+--- a/client/scenes/game/MainHub.gd
++++ b/client/scenes/game/MainHub.gd
+@@ -89,6 +89,7 @@
+ ## when they want a new piece.
+ const CRAFTING_PANEL := "res://scenes/game/CraftingPanel.gd"
+ const BEAST_COMPANION_SCENE := "res://scenes/game/BeastCompanionView.tscn"
++const ELEMENT_MATRIX_VIEW := "res://scenes/game/ElementMatrixView.tscn"
+ const BEAST_COMPANION_SYSTEM := "res://scripts/systems/BeastCompanionSystem.gd"
+ ## The codex / bestiary: four server routes that were already mounted and
+ ## already guarded (codex.py:609, 616, 621, 629) and that nothing in the
+@@ -305,6 +306,43 @@
+ 	_mark_live_buttons(companion, "companion_action")
+ 
+ 
++
++## Adds the element MATRIX under the existing Beasts view: the player's forged
++## elements, their counter relationships, and the five element routes
++## (/elements/state, /elements/forge, /elements/upgrade, /elements/resonance,
++## /elements/inheritance).
++##
++## A SECTION of the Beasts tab, not a new tab, for the reason the companion
++## above is one: an element ladder the player has to go hunting for is an
++## element ladder nobody reads, and _layout_hub() sizes the nav grid from
++## buttons.size().
++##
++## Instantiated from the .tscn rather than .new()-ed from the script, so the
++## scene root the panel builds itself into actually exists.
++func _mount_element_matrix(view: Control) -> void:
++	if view == null or not is_instance_valid(view):
++		return
++	if view.get_node_or_null("VBox") == null:
++		push_error("MainHub: Beasts view has no VBox for the element matrix panel")
++		return
++	if view.find_child("ElementMatrixView", true, false) != null:
++		return
++	var scene: PackedScene = load(ELEMENT_MATRIX_VIEW)
++	if scene == null:
++		push_error("MainHub could not load the element matrix scene")
++		return
++	var panel: Node = scene.instantiate()
++	panel.name = "ElementMatrixView"
++	# Added BEFORE it is bound: a node made with instantiate() and never added
++	# never enters the tree, never gets _ready, and so never builds its UI.
++	view.get_node("VBox").add_child(panel)
++	# The player id is a plain property, NOT a setup() call: the panel defers
++	# exactly one refresh from _ready, so setup() would schedule a second
++	# request that supersedes the first and renders nothing.
++	panel.set("player_id", str(GameState.player_data.get("id", "")))
++	# Repeated here as well as inside the panel's own _build_ui, so a later edit
++	# to the panel cannot silently leave this one greyed out as a prototype.
++	_mark_live_buttons(panel, "element_matrix_action")
+ ## Adds the CRAFTING section under the existing Equipment view.
+ ##
+ ## Built with .new() from its SCRIPT, like MissionBoardPanel and TowerRunPanel:
+@@ -499,6 +537,11 @@
+ 		# CODEX: same reasoning, same place. A bestiary the player has to
+ 		# go hunting for as a separate tab is a bestiary nobody opens.
+ 		_mount_codex(view)
++		# ELEMENT MATRIX: a third SECTION of the Beasts tab, same reasoning as
++		# the companion and the codex above. The element ladder, its counter
++		# table and the compatibility grid are the other half of a screen the
++		# player already opens.
++		_mount_element_matrix(view)
+ 		return
+ 	if view == views["tower"]:
+ 		var tower_system := preload("res://scripts/systems/TowerSystem.gd").new()
